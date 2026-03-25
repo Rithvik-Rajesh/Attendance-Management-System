@@ -1,0 +1,6 @@
+.virt/
+__pycache__/
+*.pyc
+
+
+Attendance.db
