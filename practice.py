@@ -1,117 +1,199 @@
+"""
+Student and Attendance Management Module.
+Handles student registration, attendance marking, and database operations.
+"""
 import sqlite3
 import datetime
 import time
-from utilities import get_staff
-
-conn = sqlite3.connect('Attendance.db')     #:memory:
-cur = conn.cursor()
+from utilities import get_staff, sanitize_table_name
 
 
-def Student_Details(conn,cur,Roll_Num,Name,Email,City,Country,Phone,DOB):
-    cur.execute('CREATE TABLE IF NOT EXISTS Students (roll_no TEXT PRIMARY KEY,name TEXT, email TEXT, city TEXT, country TEXT, phone TEXT,dob TEXT)') 
-
-    # For Adding in Student Info Table
-    cur.execute("INSERT INTO STUDENTS VALUES(?,?,?,?,?,?,?)",(Roll_Num,Name,Email,City,Country,Phone,DOB))
-    cur.execute('CREATE TABLE IF NOT EXISTS ATTENDANCE (roll_no VARCHAR(30) PRIMARY KEY,name TEXT)')
-
-    # For Creating a Attendance list
-    cur.execute("INSERT INTO ATTENDANCE VALUES(?,?)",(Roll_Num,Name))
-
-    # For adding their name in separate subject attendance list
-    try:
-        cur.execute("SELECT * FROM STAFF")
-        all = cur.fetchall()
-        for i in all:
-            Subject = i[2]
-            cur.execute("INSERT INTO %s VALUES('%s','%s')"%(Subject,Roll_Num,Name))
-    except:
-        pass
-    conn.commit()
-
-def Add_Staff(conn,cur,Roll_Num,Name,Subject):    #Input for Adding Teachers List
-    # Adding in Staff List of Class
-    conn = sqlite3.connect('Attendance.db')     #:memory:
-    cur = conn.cursor()
-    cur.execute("CREATE TABLE IF NOT EXISTS STAFF(Roll_Number VARCHAR(30) PRIMARY KEY, Name CHAR(30) NOT NULL,Subject CHAR(30) NOT NULL)")
-    cur.execute("INSERT INTO STAFF VALUES(?,?,?)",(Roll_Num,Name,Subject))
-
-    # Separate table for subject
-    try:
-        cur.execute("CREATE TABLE IF NOT EXISTS %s AS SELECT roll_no,name from STUDENTS"%(Subject,))
-    except:
-        cur.execute("CREATE TABLE %s (roll_no VARCHAR(30) PRIMARY KEY,name CHAR(30) NOT NULL)"%(Subject,))
-    conn.commit()
-
-def Attend_Column(Roll_Num,TF):
-    # Searching Subject of staff
-    present = []
-    _,Staff,Subject = get_staff(cur,Roll_Num)
-
-    cur.execute("CREATE TABLE IF NOT EXISTS %s AS SELECT roll_no,name from STUDENTS"%(Subject,))
-
-    #Adding Class Start Timing
-    times = str(datetime.datetime.now())[5:16]
-    formated = "D"+times[0:2] + "_"+ times[3:5] +"_T" + times[6:8]+"_"+times[9:11]
-    try:
-        cur.execute("ALTER TABLE %s ADD %s TEXT DEFAULT 'A'"%(Subject,formated))
-        with open("%s"%(TF,), 'w') as file:
-            pass
-    except:
-        print("%s, you have punched"%(Staff[1],))
-    conn.commit()
-
-    start = time.time()
-    staff_roll = Roll_Num
-    prev = staff_roll
-    while True:
-        with open("%s"%(TF,), 'r') as file:
-            roll = (file.read().split())[-1]
-        now = time.time()
-        if roll == Roll_Num or start-now > 2400:
-            print("Session Ended")
-            break
-        if (start-now > 600 and roll not in present ) :
+class AttendanceManager:
+    """Manages attendance records and student information."""
+    
+    def __init__(self, db_path='Attendance.db'):
+        """
+        Initialize the AttendanceManager.
+        
+        Args:
+            db_path: Path to SQLite database file
+        """
+        self.conn = sqlite3.connect(db_path)
+        self.cur = self.conn.cursor()
+    
+    def add_student(self, roll_num, name, email, city, country, phone, dob):
+        """
+        Register a new student in the system.
+        Adds student to main Students table and all subject attendance tables.
+        
+        Args:
+            roll_num: Student's roll number
+            name: Student's full name
+            email: Student's email address
+            city: Student's city
+            country: Student's country
+            phone: Student's phone number
+            dob: Student's date of birth
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Create Students table
+            self.cur.execute("""
+                CREATE TABLE IF NOT EXISTS Students (
+                    roll_no TEXT PRIMARY KEY,
+                    name TEXT,
+                    email TEXT,
+                    city TEXT,
+                    country TEXT,
+                    phone TEXT,
+                    dob TEXT
+                )
+            """)
+            
+            # Insert student with parameterized query for safety
+            self.cur.execute(
+                "INSERT INTO Students VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (roll_num, name, email, city, country, phone, dob)
+            )
+            
+            # Create or get Attendance table
+            self.cur.execute("""
+                CREATE TABLE IF NOT EXISTS Attendance (
+                    roll_no VARCHAR(30) PRIMARY KEY,
+                    name TEXT
+                )
+            """)
+            self.cur.execute("INSERT INTO Attendance VALUES (?, ?)", (roll_num, name))
+            
+            # Add student to all existing subject tables
             try:
-                cur.execute("UPDATE %s SET %s = 'L' WHERE roll_no = '%s'"%(Subject,formated,roll))
-            except:
-                print("Student Not Found")
-        else:
+                self.cur.execute("SELECT * FROM STAFF")
+                staff_list = self.cur.fetchall()
+                for staff in staff_list:
+                    subject = staff[2]
+                    subject_table = sanitize_table_name(subject)
+                    self.cur.execute(
+                        f"INSERT INTO {subject_table} VALUES (?, ?)",
+                        (roll_num, name)
+                    )
+            except sqlite3.Error:
+                # No existing staff/subjects yet
+                pass
+            
+            self.conn.commit()
+            return True
+        except sqlite3.Error as e:
+            print(f"Error adding student {roll_num}: {str(e)}")
+            return False
+    
+    def add_staff(self, roll_num, name, subject):
+        """
+        Register a new staff member (teacher) in the system.
+        Creates a subject-specific attendance table.
+        
+        Args:
+            roll_num: Staff member's roll number
+            name: Staff member's full name
+            subject: Subject they teach
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Create STAFF table
+            self.cur.execute("""
+                CREATE TABLE IF NOT EXISTS STAFF (
+                    Roll_Number VARCHAR(30) PRIMARY KEY,
+                    Name CHAR(30) NOT NULL,
+                    Subject CHAR(30) NOT NULL
+                )
+            """)
+            
+            # Insert staff with parameterized query
+            self.cur.execute("INSERT INTO STAFF VALUES (?, ?, ?)", (roll_num, name, subject))
+            
+            # Create subject-specific attendance table
+            subject_table = sanitize_table_name(subject)
             try:
-                cur.execute("UPDATE %s SET %s = 'P' WHERE roll_no = '%s'"%(Subject,formated,roll))
-                if (roll not in present):
-                    present.append(roll)
-            except:
-                print("Student Not Found")
-        conn.commit()
-    conn.commit()
+                self.cur.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {subject_table} AS
+                    SELECT roll_no, name FROM Students
+                """)
+            except sqlite3.OperationalError:
+                # Table might exist or students table might be empty
+                self.cur.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {subject_table} (
+                        roll_no VARCHAR(30) PRIMARY KEY,
+                        name CHAR(30) NOT NULL
+                    )
+                """)
+            
+            self.conn.commit()
+            return True
+        except sqlite3.Error as e:
+            print(f"Error adding staff {roll_num}: {str(e)}")
+            return False
+    
+    def reset_database(self):
+        """
+        Delete all tables from the database.
+        WARNING: This operation cannot be undone!
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Drop Students table
+            try:
+                self.cur.execute("DROP TABLE Students")
+            except sqlite3.OperationalError:
+                pass
+            
+            # Drop all subject tables
+            try:
+                self.cur.execute("SELECT * FROM STAFF")
+                staff_list = self.cur.fetchall()
+                for staff in staff_list:
+                    subject = staff[2]
+                    subject_table = sanitize_table_name(subject)
+                    try:
+                        self.cur.execute(f"DROP TABLE {subject_table}")
+                        self.cur.execute(f"DROP TABLE {subject_table}_col")
+                    except sqlite3.OperationalError:
+                        pass
+            except sqlite3.OperationalError:
+                pass
+            
+            # Drop STAFF and Attendance tables
+            for table in ['STAFF', 'Attendance']:
+                try:
+                    self.cur.execute(f"DROP TABLE {table}")
+                except sqlite3.OperationalError:
+                    pass
+            
+            self.conn.commit()
+            return True
+        except sqlite3.Error as e:
+            print(f"Error resetting database: {str(e)}")
+            return False
+    
+    def close(self):
+        """Close database connection."""
+        self.conn.close()
 
-#Add_Staff("133nfj3","Rahul","Elec")
-#Student_Details(300,"23","wehdj","jds","gfreta","island",100)
-#Attend_Column("133nfj3")
 
-def Reset():
-    try:
-        cur.execute("DROP TABLE STUDENTS")
-    except:
-        pass
-    try:
-        cur.execute("SELECT * FROM STAFF")
-        all = cur.fetchall()
-        for i in all:
-            Subject = i[2]
-            cur.execute("DROP TABLE %s"%(Subject,))
-    except:
-        pass
-    try:
-        cur.execute("DROP TABLE STAFF")
-    except:
-        pass
-    try:
-        cur.execute("DROP TABLE ATTENDANCE")
-    except:
-        pass
-    conn.commit()
+# Keep the old function names for backward compatibility with main.py
+def Student_Details(conn, cur, roll_num, name, email, city, country, phone, dob):
+    """Legacy function wrapper for add_student."""
+    manager = AttendanceManager('Attendance.db')
+    manager.add_student(roll_num, name, email, city, country, phone, dob)
+    manager.close()
 
-#Reset()
-conn.commit()
-conn.close()
+
+def Add_Staff(conn, cur, roll_num, name, subject):
+    """Legacy function wrapper for add_staff."""
+    manager = AttendanceManager('Attendance.db')
+    manager.add_staff(roll_num, name, subject)
+    manager.close()

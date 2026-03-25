@@ -1,73 +1,166 @@
 # Attendance Management System
 
-**Pull Request Title:** 97486751
+A Flask-based web application for managing student attendance using QR or RFID scanning. The system records attendance in real time and classifies students as Present (P), Late (L), or Absent (A).
 
-## Description
+## Overview
 
-This project is a web-based attendance management system designed to track student attendance in real-time. It uses a Flask web server to manage student and staff data, and a separate Python script to process attendance records. The system is ideal for classrooms or any setting where automated attendance tracking is needed.
+This was my first software project while learning Python and web development. It works, but it also reflects beginner design choices. This README explains what the project does and how I would improve it if building it today.
 
 ## Features
 
-- **Real-time Attendance Tracking**: The system marks attendance as present or late based on when a student's ID is scanned.
-- **Web-based Interface**: A simple web interface for managing students and staff, and for viewing attendance records.
-- **SQLite Database**: All data is stored in a local SQLite database, making it easy to set up and manage.
-- **Dynamic Subject Tables**: Attendance tables are created dynamically for each subject, allowing for flexible class management.
+- Real-time attendance tracking
+- Web interface to add staff and students
+- Subject-wise attendance records
+- SQLite-based local storage
+- Session timeout and late marking logic
 
 ## Project Structure
 
-- `main.py`: The main Flask application that runs the web server and handles all web-related functionalities.
-- `Scanner.py`: A script that processes attendance records in real-time by monitoring a log file.
-- `Attendance.db`: The SQLite database file where all student, staff, and attendance data is stored.
-- `templates/`: This directory contains all the HTML templates used for the web interface.
-- `request_logs.txt`: A temporary file used to pass information from the web server to the `Scanner.py` script.
+- `main.py`: Flask web app and routes
+- `Scanner.py`: Attendance scanner process
+- `practice.py`: Student and staff management logic
+- `utilities.py`: Shared DB utility functions
+- `reset.py`: Database reset utility
+- `templates/`: HTML templates for UI
+- `Attendance.db`: SQLite database
+- `request_logs.txt`: Runtime log used by scanner flow
 
-## Setup and Usage
+## Getting Started
 
 ### Prerequisites
 
-- Python 3
-- Flask
+- Python 3.x
+- Flask 3.x
 - SQLite3
 
 ### Installation
 
-1. **Clone the repository:**
-   ```bash
-   git clone <repository-url>
-   cd <repository-directory>
-   ```
+1. Activate virtual environment:
 
-2. **Install dependencies:**
-   ```bash
-   pip install Flask
-   ```
+```bash
+source virt/bin/activate
+```
 
-### Running the Application
+2. Run the web application:
 
-1. **Start the Flask web server:**
-   ```bash
-   python main.py
-   ```
-   The server will start on `http://<your-local-ip>:5000`.
+```bash
+python main.py
+```
 
-2. **Run the attendance scanner:**
-   In a separate terminal, run the `Scanner.py` script:
-   ```bash
-   python Scanner.py
-   ```
+3. Run the scanner in another terminal:
 
-### How to Use
+```bash
+python Scanner.py
+```
 
-1. **Add Staff**:
-   - Navigate to the "Add Staff" page to add new staff members and the subjects they teach.
+## Quick Usage
 
-2. **Add Students**:
-   - Go to the "Add Students" page to register new students with their details.
+1. Add staff via `/addstaffs`
+2. Add students via `/addstudents`
+3. Start `Scanner.py`
+4. Scan staff ID to start a class session
+5. Scan student IDs to mark attendance
 
-3. **Take Attendance**:
-   - When a staff member starts a session from the main page, the `Scanner.py` script begins monitoring for student check-ins.
-   - Students can "check-in" by having their roll number sent to the server (simulated by accessing `http://<your-local-ip>:5000/<roll-number>`).
-   - The system marks attendance as "Present" or "Late" based on the time of check-in.
+## Database Schema
 
-4. **View Attendance**:
-   - Attendance records can be viewed by navigating to the subject-specific pages.
+### Students
+
+- `roll_no` (PK)
+- `name`
+- `email`
+- `city`
+- `country`
+- `phone`
+- `dob`
+
+### STAFF
+
+- `Roll_Number` (PK)
+- `Name`
+- `Subject`
+
+### Subject Tables
+
+For each subject, a table is created dynamically with student list and session columns.
+
+### Subject Metadata Tables
+
+For each subject, `[subject]_col` stores session column names.
+
+## API Endpoints
+
+- `GET /`: Home page
+- `GET/POST /addstudents`: Register student
+- `GET/POST /addstaffs`: Register staff
+- `GET /students`: View students
+- `GET /subject/<name>`: View attendance by subject
+- `GET /server/request`: Scanner helper endpoint
+
+## What Was Beginner-Level (And How To Improve)
+
+### 1. SQL Query Construction
+
+- Old approach used string interpolation in SQL
+- Better approach is parameterized queries to prevent SQL injection
+
+### 2. Broad Exception Handling
+
+- Old code used many `except:` blocks
+- Better approach is catching specific exceptions and logging useful error messages
+
+### 3. Hardcoded Paths and Host
+
+- Old code had machine-specific absolute paths and IPs
+- Better approach is environment-based configuration
+
+### 4. File-Based Process Communication
+
+- Old flow used a text file for process communication
+- Better approach is Redis, queue, or websocket-based messaging
+
+### 5. Limited Input Validation
+
+- Old code accepted raw form input with minimal checks
+- Better approach is stricter validation and normalization for all fields
+
+### 6. Flat Structure
+
+- Logic spread across scripts with limited separation of concerns
+- Better approach is layered modules (`routes`, `services`, `models`, `config`)
+
+## If I Rebuilt It Today
+
+- Use SQLAlchemy ORM + migrations
+- Add authentication and role-based access
+- Add unit and integration tests
+- Replace file IPC with Redis or queue system
+- Add structured logging
+- Use `.env` configuration
+- Containerize with Docker
+
+## Security Notes
+
+Current project is educational and local-first. Before production usage, add:
+
+- Authentication and authorization
+- HTTPS
+- Input validation hardening
+- Rate limiting
+- Secret management
+- Backup and recovery strategy
+
+## Key Lessons Learned
+
+1. Use parameterized SQL everywhere
+2. Do not hide errors with bare exceptions
+3. Validate every user input
+4. Keep concerns separated in code structure
+5. Avoid hardcoded environment-specific values
+6. Add tests early
+7. Keep docs accurate and simple
+
+## Status
+
+- Built with Flask, SQLite, Python 3.11
+- Refactored for improved readability and safety
+- Maintained as a learning-focused project

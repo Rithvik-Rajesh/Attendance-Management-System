@@ -1,4 +1,0 @@
-import datetime
-import time
-
-print(time.time()/(3600))
